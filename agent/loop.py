@@ -1,6 +1,6 @@
 import json
 
-from . import memory
+from services import memory
 from dotenv import load_dotenv
 
 from .llm import LLM
@@ -11,7 +11,7 @@ load_dotenv()
 
 llm = LLM(system=SYSTEM_PROMPT)
 
-DESTRUCTIVE_TOOLS = {"write_file", "delete_file", "run_shell"}
+DESTRUCTIVE_TOOLS: set[str] = set()
 
 
 def confirm(block) -> bool:
@@ -29,13 +29,13 @@ MAX_ITERATIONS = 20
 def _build_user_content(user_prompt: str) -> str:
     """Prepend relevant memory facts (if any) to the user message."""
     try:
-        facts = memory.search(user_prompt)
-    except Exception:
+        facts = memory.search(user_prompt, top_k=10)
+    except Exception as e:
         facts = []
     if not facts:
         return user_prompt
-    fact_block = "\n".join(f"- {f}" for f in facts)
-    return f"## Relevant project memory\n{fact_block}\n\n## Request\n{user_prompt}"
+    schema_block = "\n\n".join(facts)
+    return f"## Relevant table schemas\n{schema_block}\n\n## Request\n{user_prompt}"
 
 
 def run_agent(user_prompt: str, messages: list) -> list:

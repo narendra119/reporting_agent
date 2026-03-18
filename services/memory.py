@@ -6,7 +6,7 @@ from openai import OpenAI
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, PointStruct, VectorParams
 
-COLLECTION    = "project_memory"
+COLLECTION    = "reporting_memory"
 VECTOR_SIZE   = 768                                     # nomic-embed-text output size
 QDRANT_URL    = os.getenv("QDRANT_URL", "http://localhost:6333")
 OLLAMA_URL    = os.getenv("OLLAMA_URL", "http://localhost:11434")
@@ -52,9 +52,9 @@ def save(facts: list[str]) -> int:
 def search(query: str, top_k: int = 5) -> list[str]:
     """Return the top-k most relevant facts for the given query."""
     _ensure_collection()
-    hits = _qdrant.search(
+    result = _qdrant.query_points(
         collection_name=COLLECTION,
-        query_vector=_embed(query),
+        query=_embed(query),
         limit=top_k,
     )
-    return [h.payload["text"] for h in hits]
+    return [h.payload["text"] for h in result.points]

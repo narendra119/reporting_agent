@@ -13,10 +13,11 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "openai>=2.29.0",
     "qdrant-client>=1.17.1",
+    "pyodbc>=5.3.0",
 ]
 
 [project.scripts]
 reporting-agent = "agent.loop:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["agent"]
+packages = ["agent", "services"]
