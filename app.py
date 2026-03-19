@@ -1,6 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 import uvicorn
+
+from agent.loop import run_agent
 
 app = FastAPI()
 
@@ -13,15 +16,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/api/report")
-async def get_report():
-    # This dummy data matches the keys in your React code
-    return [
-        {"name": "Jan", "revenue": 4500, "orders": 2400},
-        {"name": "Feb", "revenue": 3200, "orders": 1398},
-        {"name": "Mar", "revenue": 4800, "orders": 9800},
-        {"name": "Apr", "revenue": 5100, "orders": 3908},
-    ]
+class ReportRequest(BaseModel):
+    query: str
+
+def extract_json_from_response(response: str):
+    import re, json
+    match = re.search(r"<json_reponse>\s*(.*?)\s*</json_reponse>", response, re.DOTALL)
+    if not match:
+        return None
+    return json.loads(match.group(1))
+
+@app.post("/api/report")
+def get_report(body: ReportRequest):
+    messages = run_agent(body.query, [])
+    print(messages)
+    last_assistant = next(
+        m for m in reversed(messages) if m["role"] == "assistant"
+    )
+    text = " ".join(
+        block.text for block in last_assistant["content"] if hasattr(block, "text")
+    )
+    return extract_json_from_response(text)
+
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
