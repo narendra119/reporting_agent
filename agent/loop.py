@@ -9,7 +9,7 @@ from .system_prompt import SYSTEM_PROMPT
 
 load_dotenv()
 
-llm = LLM(system=SYSTEM_PROMPT)
+llm = LLM(model="grok-3", system=SYSTEM_PROMPT)
 
 DESTRUCTIVE_TOOLS: set[str] = set()
 

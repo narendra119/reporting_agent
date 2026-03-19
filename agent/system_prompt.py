@@ -27,7 +27,7 @@ Here is the format you should follow for your response:
 
 Table
 ```
-<json_reponse>
+<json_response>
 {{
   "type" : "table",
   "data": [
@@ -37,12 +37,12 @@ Table
       {{"name": "Apr", "revenue": 5100, "orders": 3908}}
   ]
 }}
-</json_reponse>
+</json_response>
 ```
 
 Pie Chart
 ```
-<json_reponse>
+<json_response>
 {{
   "type" : "pie",
   "data": [
@@ -52,12 +52,12 @@ Pie Chart
       {{"name": "Apr", "value": 5100}}
   ]
 }}
-</json_reponse>
+</json_response>
 ```
 
 Bar Graph
 ```
-<json_reponse>
+<json_response>
 {{
   "type" : "bar",
   "data": [
@@ -67,7 +67,7 @@ Bar Graph
       {{"name": "Apr", "revenue": 5100, "orders": 3908}}
   ]
 }}
-</json_reponse>
+</json_response>
 ```
 
 

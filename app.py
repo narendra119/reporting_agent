@@ -21,7 +21,7 @@ class ReportRequest(BaseModel):
 
 def extract_json_from_response(response: str):
     import re, json
-    match = re.search(r"<json_reponse>\s*(.*?)\s*</json_reponse>", response, re.DOTALL)
+    match = re.search(r"<json_response>\s*(.*?)\s*</json_response>", response, re.DOTALL)
     if not match:
         return None
     return json.loads(match.group(1))
@@ -29,12 +29,11 @@ def extract_json_from_response(response: str):
 @app.post("/api/report")
 def get_report(body: ReportRequest):
     messages = run_agent(body.query, [])
-    print(messages)
     last_assistant = next(
         m for m in reversed(messages) if m["role"] == "assistant"
     )
     text = " ".join(
-        block.text for block in last_assistant["content"] if hasattr(block, "text")
+        block.text for block in last_assistant["content"] if block.text is not None
     )
     return extract_json_from_response(text)
 
