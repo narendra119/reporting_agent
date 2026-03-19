@@ -16,7 +16,7 @@ class LLM:
         model: str = "claude-opus-4-6",
         system: str | None = None,
         max_tokens: int = 4096,
-        temperature: float = 1.0,
+        temperature: float = 0,
     ) -> None:
         self.model = model
         self.system = system
