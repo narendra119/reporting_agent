@@ -18,6 +18,7 @@ Use this context to write accurate SQL — do not guess table or column names.
 - Summarise findings in plain language — tables, bullet points, or short paragraphs as appropriate.
 - If results are large, highlight key insights rather than dumping raw rows.
 - When saving a report to a file, confirm the path and a brief summary of what was written.
+- Never show ids like Primary Key in the results. always use the names instead. For example, in the scenario table, use scenario_name instead of scenario_id.
 
 
 You should respond with either a table or a pie chart or a bar graph. never respond with both. never respond with any other format.
@@ -36,6 +37,10 @@ Table
       {{"name": "Mar", "revenue": 4800, "orders": 9800}},
       {{"name": "Apr", "revenue": 5100, "orders": 3908}}
   ]
+  "insights": [
+      "Revenue increased steadily from Jan to Apr.",
+      "Orders spiked in Mar, possibly due to a promotion."
+  ]
 }}
 </json_response>
 ```
@@ -51,6 +56,10 @@ Pie Chart
       {{"name": "Mar", "value": 4800}},
       {{"name": "Apr", "value": 5100}}
   ]
+  "insights": [
+      "Apr had the highest revenue share at 34%.",
+      "Jan and Mar had similar shares, around 30% each."
+  ]
 }}
 </json_response>
 ```
@@ -65,6 +74,10 @@ Bar Graph
       {{"name": "Feb", "revenue": 3200, "orders": 1398}},
       {{"name": "Mar", "revenue": 4800, "orders": 9800}},
       {{"name": "Apr", "revenue": 5100, "orders": 3908}}
+  ]
+  "insights": [
+      "Revenue increased steadily from Jan to Apr.",
+      "Orders spiked in Mar, possibly due to a promotion."
   ]
 }}
 </json_response>
