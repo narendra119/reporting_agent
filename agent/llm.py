@@ -80,7 +80,7 @@ class BaseLLM(ABC):
     def stream(self, messages: list[Message]) -> Iterator[str]: ...
 
     @abstractmethod
-    def stream_respond(self, messages: list[Message], tools: list | None = None) -> LLMResponse: ...
+    def stream_respond(self, messages: list[Message], tools: list | None = None, on_text=None) -> LLMResponse: ...
 
     @abstractmethod
     def respond(self, messages: list[Message], tools: list | None = None) -> LLMResponse: ...
@@ -144,14 +144,17 @@ class AnthropicLLM(BaseLLM):
         ) as stream:
             yield from stream.text_stream
 
-    def stream_respond(self, messages: list[Message], tools: list | None = None) -> LLMResponse:
+    def stream_respond(self, messages: list[Message], tools: list | None = None, on_text=None) -> LLMResponse:
         with self._client.messages.stream(
             model=self.model, max_tokens=self.max_tokens, temperature=self.temperature,
             system=self.system, messages=self._to_api_messages(messages),
             **({"tools": tools} if tools else {}),
         ) as stream:
             for text in stream.text_stream:
-                print(text, end="", flush=True)
+                if on_text:
+                    on_text(text)
+                else:
+                    print(text, end="", flush=True)
             return self._from_api_response(stream.get_final_message())
 
     def respond(self, messages: list[Message], tools: list | None = None) -> LLMResponse:
@@ -260,7 +263,7 @@ class GrokLLM(BaseLLM):
             if delta:
                 yield delta
 
-    def stream_respond(self, messages: list[Message], tools: list | None = None) -> LLMResponse:
+    def stream_respond(self, messages: list[Message], tools: list | None = None, on_text=None) -> LLMResponse:
         stream = self._client.chat.completions.create(
             model=self.model, max_tokens=self.max_tokens, temperature=self.temperature,
             messages=self._to_api_messages(messages),
@@ -274,7 +277,10 @@ class GrokLLM(BaseLLM):
         for chunk in stream:
             choice = chunk.choices[0]
             if choice.delta.content:
-                print(choice.delta.content, end="", flush=True)
+                if on_text:
+                    on_text(choice.delta.content)
+                else:
+                    print(choice.delta.content, end="", flush=True)
                 text_buf += choice.delta.content
             for tc_delta in choice.delta.tool_calls or []:
                 while len(tool_calls_buf) <= tc_delta.index:

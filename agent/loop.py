@@ -38,13 +38,17 @@ def _build_user_content(user_prompt: str) -> str:
     return f"## Relevant table schemas\n{schema_block}\n\n## Request\n{user_prompt}"
 
 
-def run_agent(user_prompt: str, messages: list) -> list:
+def run_agent(user_prompt: str, messages: list, on_event=None) -> list:
     messages.append({"role": "user", "content": _build_user_content(user_prompt)})
 
+    on_text = (lambda t: on_event({"type": "text", "chunk": t})) if on_event else None
+
     for _ in range(MAX_ITERATIONS):
-        print("\nAgent: ", end="", flush=True)
-        response = llm.stream_respond(messages, tools=TOOLS)
-        print()  # newline after streamed text
+        if not on_event:
+            print("\nAgent: ", end="", flush=True)
+        response = llm.stream_respond(messages, tools=TOOLS, on_text=on_text)
+        if not on_event:
+            print()  # newline after streamed text
 
         messages.append({"role": "assistant", "content": response.content})
 
@@ -56,11 +60,16 @@ def run_agent(user_prompt: str, messages: list) -> list:
             for block in response.content:
                 if block.type != "tool_use":
                     continue
-                print(f"  [tool] {block.name}({json.dumps(block.input)})")
+                if on_event:
+                    on_event({"type": "tool_call", "name": block.name, "input": block.input})
+                else:
+                    print(f"  [tool] {block.name}({json.dumps(block.input)})")
                 if block.name in DESTRUCTIVE_TOOLS and not confirm(block):
                     result = "User denied this action."
                 else:
                     result = execute_tool(block.name, block.input)
+                if on_event:
+                    on_event({"type": "tool_result", "name": block.name, "result": result})
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": block.id,
@@ -69,7 +78,8 @@ def run_agent(user_prompt: str, messages: list) -> list:
 
             messages.append({"role": "user", "content": tool_results})
     else:
-        print(f"\n[agent stopped: reached max iterations ({MAX_ITERATIONS})]")
+        if not on_event:
+            print(f"\n[agent stopped: reached max iterations ({MAX_ITERATIONS})]")
 
     return messages
 

@@ -270,6 +270,10 @@ const ReportingDashboard = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [history, setHistory] = useState(loadHistory);
+  // streamLog: [{type:'text', content:''} | {type:'tool', name, input, result, done}]
+  const [streamLog, setStreamLog] = useState([]);
+  const [streamExpanded, setStreamExpanded] = useState(false);
+  const streamBodyRef = useRef(null);
   const chartRef = useRef(null);
 
   const submitQuery = async (q) => {
@@ -278,21 +282,75 @@ const ReportingDashboard = () => {
     setIsLoading(true);
     setError(null);
     setResult(null);
+    setStreamLog([]);
+    setStreamExpanded(true);
 
     try {
-      const response = await fetch('http://localhost:8000/api/report', {
+      const response = await fetch('http://localhost:8000/api/report/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: q }),
       });
       if (!response.ok) throw new Error(`Server error: ${response.status}`);
-      const data = await response.json();
-      setResult(data);
-      setHistory(prev => {
-        const updated = [q, ...prev.filter(h => h !== q)].slice(0, 10);
-        saveHistory(updated);
-        return updated;
-      });
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const frames = buffer.split('\n\n');
+        buffer = frames.pop(); // keep incomplete trailing frame
+
+        for (const frame of frames) {
+          const lines = frame.split('\n');
+          const eventLine = lines.find(l => l.startsWith('event:'));
+          const dataLine  = lines.find(l => l.startsWith('data:'));
+          if (!eventLine || !dataLine) continue;
+
+          const type    = eventLine.replace('event:', '').trim();
+          const payload = JSON.parse(dataLine.replace('data:', '').trim());
+
+          if (type === 'text') {
+            setStreamLog(prev => {
+              const last = prev[prev.length - 1];
+              const updated = last?.type === 'text'
+                ? [...prev.slice(0, -1), { type: 'text', content: last.content + payload.chunk }]
+                : [...prev, { type: 'text', content: payload.chunk }];
+              requestAnimationFrame(() => {
+                if (streamBodyRef.current) streamBodyRef.current.scrollTop = streamBodyRef.current.scrollHeight;
+              });
+              return updated;
+            });
+          }
+          if (type === 'tool_call') {
+            setStreamLog(prev => [...prev, { type: 'tool', name: payload.name, input: payload.input, result: null, done: false }]);
+          }
+          if (type === 'tool_result') {
+            setStreamLog(prev => {
+              const idx = [...prev].reverse().findIndex(e => e.type === 'tool' && e.name === payload.name && !e.done);
+              if (idx === -1) return prev;
+              const realIdx = prev.length - 1 - idx;
+              const updated = [...prev];
+              updated[realIdx] = { ...updated[realIdx], result: payload.result, done: true };
+              return updated;
+            });
+          }
+          if (type === 'done') {
+            setStreamExpanded(false);
+            setResult(payload);
+            setHistory(prev => {
+              const updated = [q, ...prev.filter(h => h !== q)].slice(0, 10);
+              saveHistory(updated);
+              return updated;
+            });
+          }
+          if (type === 'error') throw new Error(payload.message);
+        }
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -377,6 +435,50 @@ const ReportingDashboard = () => {
         </div>
       )}
 
+      {/* Live stream panel */}
+      {streamLog.length > 0 && (() => {
+        const toolCount  = streamLog.filter(e => e.type === 'tool').length;
+        const charCount  = streamLog.filter(e => e.type === 'text').reduce((a, e) => a + e.content.length, 0);
+        const summary    = [toolCount > 0 && `${toolCount} tool call${toolCount > 1 ? 's' : ''}`, charCount > 0 && `${charCount} chars`].filter(Boolean).join(' · ');
+        return (
+          <div style={styles.streamPanel}>
+            <div style={styles.streamHeader} onClick={() => setStreamExpanded(e => !e)}>
+              <span style={styles.streamTitle}>
+                {isLoading && <span style={styles.streamDot} />}
+                Agent Reasoning
+              </span>
+              {!streamExpanded && <span style={styles.streamSummary}>{summary}</span>}
+              <span style={styles.streamToggle}>{streamExpanded ? '▲' : '▼'}</span>
+            </div>
+            {streamExpanded && (
+              <div ref={streamBodyRef} style={styles.streamBody}>
+                {streamLog.map((entry, i) => {
+                  if (entry.type === 'text') return (
+                    <p key={i} style={styles.streamText}>{entry.content}</p>
+                  );
+                  if (entry.type === 'tool') return (
+                    <div key={i} style={styles.toolBlock}>
+                      <div style={styles.toolHeader}>
+                        <span style={{ ...styles.toolBadge, opacity: entry.done ? 0.7 : 1 }}>
+                          {entry.done ? '✓' : '⟳'} {entry.name}
+                        </span>
+                        <code style={styles.toolInput}>{JSON.stringify(entry.input)}</code>
+                      </div>
+                      {entry.done && entry.result && (
+                        <pre style={styles.toolResult}>
+                          {entry.result.length > 400 ? entry.result.slice(0, 400) + '\n…' : entry.result}
+                        </pre>
+                      )}
+                    </div>
+                  );
+                  return null;
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {/* Result card */}
       <div style={styles.card}>
         {result && (
@@ -451,6 +553,58 @@ const styles = {
     color: '#fff', backgroundColor: '#3b82f6', border: 'none', borderRadius: '6px', cursor: 'pointer',
   },
   skelBlock: { backgroundColor: '#e5e7eb', borderRadius: '4px', animation: 'shimmer 1.4s ease-in-out infinite' },
+  streamPanel: {
+    marginBottom: '16px', border: '1px solid #e5e7eb', borderRadius: '10px',
+    backgroundColor: '#f8fafc', overflow: 'hidden',
+  },
+  streamHeader: {
+    display: 'flex', alignItems: 'center', gap: '8px',
+    padding: '8px 14px', cursor: 'pointer', userSelect: 'none',
+    borderBottom: '1px solid transparent',
+  },
+  streamTitle: {
+    display: 'flex', alignItems: 'center', gap: '6px',
+    fontSize: '11px', fontWeight: 600, color: '#6b7280',
+    letterSpacing: '0.05em', textTransform: 'uppercase',
+  },
+  streamSummary: { fontSize: '11px', color: '#9ca3af', flex: 1 },
+  streamToggle: { fontSize: '10px', color: '#9ca3af', marginLeft: 'auto' },
+  streamDot: {
+    display: 'inline-block', width: '7px', height: '7px', borderRadius: '50%',
+    backgroundColor: '#10b981', animation: 'shimmer 1.2s ease-in-out infinite',
+  },
+  streamBody: {
+    padding: '12px 14px', maxHeight: '280px', overflowY: 'auto',
+    borderTop: '1px solid #e5e7eb',
+  },
+  streamText: {
+    margin: '0 0 8px 0', fontSize: '13px', lineHeight: 1.7, color: '#374151',
+    whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+  },
+  toolBlock: {
+    margin: '6px 0', borderRadius: '6px', border: '1px solid #e5e7eb',
+    backgroundColor: '#fff', overflow: 'hidden',
+  },
+  toolHeader: {
+    display: 'flex', alignItems: 'center', gap: '8px',
+    padding: '6px 10px', flexWrap: 'wrap',
+  },
+  toolBadge: {
+    fontSize: '11px', fontWeight: 600, padding: '2px 8px',
+    backgroundColor: '#eff6ff', color: '#3b82f6',
+    borderRadius: '999px', whiteSpace: 'nowrap',
+  },
+  toolInput: {
+    fontSize: '11px', color: '#6b7280', flex: 1,
+    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+  },
+  toolResult: {
+    margin: 0, padding: '6px 10px',
+    fontSize: '11px', color: '#374151', lineHeight: 1.5,
+    whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+    borderTop: '1px solid #f3f4f6', backgroundColor: '#fafafa',
+    maxHeight: '120px', overflowY: 'auto',
+  },
   th: { textAlign: 'left', padding: '10px 12px', borderBottom: '2px solid #e5e7eb', color: '#6b7280', fontWeight: 600, whiteSpace: 'nowrap' },
   td: { padding: '10px 12px', borderBottom: '1px solid #e5e7eb', color: '#374151' },
   metricCard: { padding: '20px', border: '1px solid #e5e7eb', borderRadius: '10px', backgroundColor: '#f9fafb' },
