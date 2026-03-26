@@ -4,19 +4,20 @@ from services import db, memory as _memory
 
 TOOLS = [
     {
-        "name": "query_sqlserver",
+        "name": "search",
         "description": (
-            "Connect to a SQL Server database and execute a SELECT query. "
-            "Use this to fetch, inspect, or analyze data from SQL Server. "
-            "Only SELECT statements are permitted — no INSERT, UPDATE, DELETE, or DDL."
+            "Search for data across different sources. "
+            "Set type='db' to run a SELECT query against SQL Server. "
+            "Only SELECT statements are permitted for db searches."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "query":     {"type": "string",  "description": "The SELECT query to execute"},
-                "row_limit": {"type": "integer", "description": "Max rows to return (default 100)"},
+                "type":      {"type": "string",  "description": "The search source. Supported values: 'db'"},
+                "query":     {"type": "string",  "description": "The search query (e.g. a SELECT statement for type='db')"},
+                "row_limit": {"type": "integer", "description": "Max rows to return for db searches (default 100)"},
             },
-            "required": ["query"],
+            "required": ["type", "query"],
         },
     },
     {
@@ -100,30 +101,10 @@ def update_memory(facts: list[str]) -> str:
     return f"Saved {n} fact(s) to vector memory."
 
 
-def query_sqlserver(query: str, row_limit: int = 100) -> str:
-    if query.strip().split()[0].upper() != "SELECT":
-        return "Error: only SELECT queries are permitted."
-
-    conn = db.connect()
-    try:
-        cursor = conn.cursor()
-        cursor.execute(query)
-        columns = [col[0] for col in cursor.description]
-        rows = cursor.fetchmany(row_limit)
-    finally:
-        conn.close()
-
-    if not rows:
-        return "(query returned no rows)"
-
-    col_widths = [max(len(c), max((len(str(r[i])) for r in rows), default=0)) for i, c in enumerate(columns)]
-    sep    = "  ".join("-" * w for w in col_widths)
-    header = "  ".join(c.ljust(col_widths[i]) for i, c in enumerate(columns))
-    lines  = [header, sep]
-    for row in rows:
-        lines.append("  ".join(str(v).ljust(col_widths[i]) for i, v in enumerate(row)))
-
-    return "\n".join(lines) + f"\n({len(rows)} row(s) shown, limit={row_limit})"
+def search(type: str, query: str, row_limit: int = 100) -> str:
+    match type:
+        case "db": return db.query_sqlserver(query, row_limit)
+        case _:    return f"Error: unsupported search type '{type}'"
 
 
 def ask_user(question: str) -> str:
@@ -135,7 +116,7 @@ def ask_user(question: str) -> str:
 def execute_tool(name: str, inputs: dict) -> str:
     try:
         match name:
-            case "query_sqlserver": return query_sqlserver(**inputs)
+            case "search":          return search(**inputs)
             case "write_file":      return write_file(**inputs)
             case "read_file":       return read_file(**inputs)
             case "update_memory":   return update_memory(**inputs)

@@ -31,3 +31,29 @@ def connect():
         f"SERVER={host},{port};DATABASE={database};UID={username};PWD={password};"
     )
     return pyodbc.connect(conn_str, timeout=15)
+
+
+def query_sqlserver(query: str, row_limit: int = 100) -> str:
+    if query.strip().split()[0].upper() != "SELECT":
+        return "Error: only SELECT queries are permitted."
+
+    conn = connect()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(query)
+        columns = [col[0] for col in cursor.description]
+        rows = cursor.fetchmany(row_limit)
+    finally:
+        conn.close()
+
+    if not rows:
+        return "(query returned no rows)"
+
+    col_widths = [max(len(c), max((len(str(r[i])) for r in rows), default=0)) for i, c in enumerate(columns)]
+    sep    = "  ".join("-" * w for w in col_widths)
+    header = "  ".join(c.ljust(col_widths[i]) for i, c in enumerate(columns))
+    lines  = [header, sep]
+    for row in rows:
+        lines.append("  ".join(str(v).ljust(col_widths[i]) for i, v in enumerate(row)))
+
+    return "\n".join(lines) + f"\n({len(rows)} row(s) shown, limit={row_limit})"
